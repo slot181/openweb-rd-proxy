@@ -3,66 +3,53 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 
-// 代理配置
+// 添加重定向中间件
+app.use((req, res, next) => {
+  if (req.headers['x-forwarded-proto'] !== 'https') {
+    // 确保所有请求都使用 HTTPS
+    res.redirect(`https://${req.headers.host}${req.url}`);
+  } else {
+    next();
+  }
+});
+
 const proxyOptions = {
   target: 'http://182.44.1.58:4000',
   secure: false,
   changeOrigin: true,
-  ws: true, // WebSocket 支持
-  // 添加代理事件处理
+  ws: true,
   onProxyReq: (proxyReq, req, res) => {
-    // 保留原始 host
-    proxyReq.setHeader('X-Forwarded-Host', req.headers.host);
-    // 设置协议
+    // 确保所有转发的请求都带有正确的协议头
     proxyReq.setHeader('X-Forwarded-Proto', 'https');
-  },
-  // 添加自定义请求头
-  headers: {
-    'X-Real-IP': (req) => req.ip,
-    'X-Forwarded-For': (req) => req.ip,
-  },
-  // 或者使用函数形式
-  onProxyReq: (proxyReq, req, res) => {
-    proxyReq.setHeader('X-Real-IP', req.ip);
-    proxyReq.setHeader('X-Forwarded-For', req.ip);
     proxyReq.setHeader('X-Forwarded-Host', req.headers.host);
-    proxyReq.setHeader('X-Forwarded-Proto', 'https');
+    // 设置原始请求协议
+    proxyReq.setHeader('X-Original-Proto', 'https');
   },
-  // 处理 WebSocket
-  wsOptions: {
-    reconnect: true,
+  // 添加协议相关的重写
+  router: {
+    'https://': 'http://' // 确保内部转发使用 http
   },
-  // 路径重写(如果需要)
-  pathRewrite: {
-    '^/': '/', // 保持路径不变
-  },
-  // 错误处理
-  onError: (err, req, res) => {
-    console.error('Proxy Error:', err);
-    res.status(500).send('Proxy Error');
+  // 修改响应头
+  onProxyRes: (proxyRes, req, res) => {
+    // 修改所有重定向响应的协议为 HTTPS
+    if (proxyRes.headers.location) {
+      proxyRes.headers.location = proxyRes.headers.location.replace(
+        'http://',
+        'https://'
+      );
+    }
   }
 };
 
-// 应用代理中间件
 app.use('/', createProxyMiddleware(proxyOptions));
 
-// 错误处理中间件
+// 错误处理
 app.use((err, req, res, next) => {
-  console.error('Application Error:', err);
-  res.status(500).send('Server Error');
+  console.error('Error:', err);
+  res.status(500).send('Something broke!');
 });
 
-// 启动服务器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Proxy server is running on port ${PORT}`);
-});
-
-// 优雅关闭
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM. Performing graceful shutdown...');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
 });
