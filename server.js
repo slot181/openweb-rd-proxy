@@ -18,8 +18,15 @@ const proxyOptions = {
   },
   // 添加自定义请求头
   headers: {
-    'X-Real-IP': '${req.ip}',
-    'X-Forwarded-For': '${req.ip}',
+    'X-Real-IP': (req) => req.ip,
+    'X-Forwarded-For': (req) => req.ip,
+  },
+  // 或者使用函数形式
+  onProxyReq: (proxyReq, req, res) => {
+    proxyReq.setHeader('X-Real-IP', req.ip);
+    proxyReq.setHeader('X-Forwarded-For', req.ip);
+    proxyReq.setHeader('X-Forwarded-Host', req.headers.host);
+    proxyReq.setHeader('X-Forwarded-Proto', 'https');
   },
   // 处理 WebSocket
   wsOptions: {
